@@ -127,14 +127,75 @@
             <div style="padding:12px 16px;background:#fff7e6;border-radius:6px;color:#ad4e00">${order.overEstimateReason}</div>
           </div>
         ` : ''}
+        ${order.phases && order.phases.length > 0 ? `
+        <div class="card">
+          <div class="card-title">📊 分阶段验收进度</div>
+          ${UI.phaseProgress(order.phases)}
+        </div>` : ''}
+
         <div class="card">
           <div class="card-title">🧾 财务总览</div>
           ${UI.financeOverview(order)}
         </div>
+
+        ${order.feeAdjustments && order.feeAdjustments.length > 0 ? `
+        <div class="card">
+          <div class="card-title">💱 费用调整记录</div>
+          ${UI.feeAdjustmentsPanel(order.feeAdjustments)}
+        </div>` : ''}
+
         <div class="card">
           <div class="card-title">💰 报价明细</div>
           ${UI.pricingBreakdown(order)}
+          <div class="divider"></div>
+          ${order.materials && order.materials.some(m => m.feeType) ? `
+            <div class="card-title">🏷️ 费用类型标记</div>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px">
+              ${order.materials.filter(m => m.feeType).map(m => UI.feeTypeTag(m.feeType)).join('')}
+              ${order.labor && order.labor.filter(l => l.feeType).map(l => UI.feeTypeTag(l.feeType)).join('')}
+              ${order.addItems && order.addItems.filter(a => a.feeType).map(a => UI.feeTypeTag(a.feeType, a.amount)).join('')}
+            </div>
+            <div class="divider"></div>
+          ` : ''}
+          ${UI.detailedWarrantyBox(order) || UI.warrantyBox(order) || '<div style="color:#909399">暂未设置保修期</div>'}
         </div>
+
+        ${order.changeOrders && order.changeOrders.length > 0 ? `
+        <div class="card">
+          <div class="card-title">📋 变更单记录</div>
+          ${order.changeOrders.map(co => `
+            <div class="change-panel" style="margin-bottom:16px">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+                <div>
+                  <b>变更单 #${co.id}</b>
+                  <span class="tag ${co.status === 'approved' ? 'tag-success' : co.status === 'rejected' ? 'tag-return' : 'tag-pending'}" style="margin-left:8px">
+                    ${co.status === 'approved' ? '已确认' : co.status === 'rejected' ? '已驳回' : '待确认'}
+                  </span>
+                </div>
+                <div style="color:#fa8c16;font-weight:600">+ ${Util.fmtMoney(co.totalAdd)}</div>
+              </div>
+              ${co.diagnosis ? `<div style="background:#fffbe6;padding:8px 12px;border-radius:6px;font-size:13px;color:#ad4e00;margin-bottom:10px">📝 ${co.diagnosis}</div>` : ''}
+              <table class="data-table" style="font-size:13px">
+                <thead><tr><th>变更项目</th><th style="width:100px">金额</th><th>变更原因</th><th style="width:100px">状态</th></tr></thead>
+                <tbody>
+                  ${co.items.map(it => `
+                    <tr>
+                      <td>${it.name}${it.isReplacement ? '<span class="tag tag-change" style="margin-left:6px">替代件</span>' : ''}</td>
+                      <td style="font-weight:600;color:#fa8c16">+ ${Util.fmtMoney(it.amount)}</td>
+                      <td>${it.reason}</td>
+                      <td>${it.confirmed ? '<span class="tag tag-success">已确认</span>' : '<span class="tag tag-pending">待确认</span>'}</td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+              <div style="color:#909399;font-size:12px;margin-top:8px">
+                提交时间：${Util.fmtTime(co.createdAt)}
+                ${co.approvedAt ? ` · 客户确认时间：${Util.fmtTime(co.approvedAt)}` : ''}
+              </div>
+            </div>
+          `).join('')}
+        </div>` : ''}
+
         ${order.invoices && order.invoices.length ? `
           <div class="card">
             <div class="card-title">🧾 发票记录</div>
@@ -143,6 +204,7 @@
               <tbody>${order.invoices.map(function (i) { return `<tr><td>${i.invoiceNo}</td><td>${Util.fmtDate(i.date)}</td><td>${Util.fmtMoney(i.amount)}</td><td><span class="tag tag-success">已开具</span></td></tr>`; }).join('')}</tbody>
             </table>
           </div>` : ''}
+
         <div class="card">
           <div class="card-title">📜 完整时间线（含财务操作记录）</div>
           ${Timeline.render(order)}

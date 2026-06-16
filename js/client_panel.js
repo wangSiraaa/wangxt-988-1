@@ -74,12 +74,22 @@
       const actions = [];
       if (mine && (order.status === 'pending' || order.status === 'review')) {
         if (order.status === 'pending') {
-          actions.push(`<button class="btn btn-success btn-lg" onclick="ClientPanel.confirmQuote('${order.id}')">✅ 确认报价（可开工）</button>`);
+          if (order.phases && order.phases.length > 0) {
+            actions.push(`<button class="btn btn-info btn-lg" onclick="ClientPanel.partialConfirmModal('${order.id}')">☑️ 项目级确认</button>`);
+          }
+          actions.push(`<button class="btn btn-success btn-lg" onclick="ClientPanel.confirmQuote('${order.id}')">✅ 全部确认（可开工）</button>`);
         }
         actions.push(`<button class="btn btn-danger" onclick="ClientPanel.returnQuote('${order.id}')">↩️ 退回报价</button>`);
       }
+      if (mine && order.status === 'returned') {
+        actions.push(`<button class="btn btn-info" onclick="ClientPanel.viewReturnedNote('${order.id}')">📝 查看退回意见</button>`);
+        actions.push(`<button class="btn btn-secondary" onclick="ClientPanel.waitForRequote('${order.id}')">⏳ 等待重报</button>`);
+      }
       if (mine && order.status === 'checking') {
-        actions.push(`<button class="btn btn-success btn-lg" onclick="ClientPanel.acceptOrder('${order.id}')">✅ 验收通过（完成）</button>`);
+        if (order.phases && order.phases.length > 0) {
+          actions.push(`<button class="btn btn-info btn-lg" onclick="ClientPanel.phaseAcceptModal('${order.id}')">📊 分阶段验收</button>`);
+        }
+        actions.push(`<button class="btn btn-success btn-lg" onclick="ClientPanel.acceptOrder('${order.id}')">✅ 整体验收通过</button>`);
         actions.push(`<button class="btn btn-danger" onclick="ClientPanel.rejectAccept('${order.id}')">🔧 驳回返修</button>`);
       }
       const pendingChanges = (order.changeOrders || []).filter(c => c.status === 'pending');
@@ -171,19 +181,88 @@
           ${UI.laborTable(order, false)}
         </div>` : ''}
 
+        ${order.phases && order.phases.length > 0 ? `
+        <div class="card">
+          <div class="card-title">📊 分阶段验收进度</div>
+          ${UI.phaseProgress(order.phases)}
+          <div class="divider"></div>
+          <div class="card-title">☑️ 项目级确认状态</div>
+          ${UI.itemConfirmTable(order.phases, { editable: false })}
+        </div>` : ''}
+
+        ${order.survey && order.survey.photos && order.survey.photos.length > 0 ? `
+        <div class="card">
+          <div class="card-title">📷 勘查照片</div>
+          ${UI.photoWall(order.survey.photos)}
+        </div>` : ''}
+
+        ${order.changeOrders && order.changeOrders.length > 0 ? `
+        <div class="card">
+          <div class="card-title">📋 变更单详情</div>
+          ${order.changeOrders.map(co => `
+            <div class="change-panel" style="margin-bottom:16px">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+                <div>
+                  <b>变更单 #${co.id}</b>
+                  <span class="tag ${co.status === 'approved' ? 'tag-success' : co.status === 'rejected' ? 'tag-return' : 'tag-pending'}" style="margin-left:8px">
+                    ${co.status === 'approved' ? '已确认' : co.status === 'rejected' ? '已驳回' : '待确认'}
+                  </span>
+                  ${co.type === 'hidden_mod' ? '<span class="tag tag-info" style="margin-left:6px">隐蔽工程</span>' : ''}
+                  ${co.type === 'structure' ? '<span class="tag tag-info" style="margin-left:6px">结构问题</span>' : ''}
+                  ${co.type === 'replacement' ? '<span class="tag tag-change" style="margin-left:6px">替代件</span>' : ''}
+                </div>
+                <div style="color:#fa8c16;font-weight:600">+ ${Util.fmtMoney(co.totalAdd)}</div>
+              </div>
+              ${co.diagnosis ? `<div style="background:#fffbe6;padding:8px 12px;border-radius:6px;font-size:13px;color:#ad4e00;margin-bottom:10px">📝 ${co.diagnosis}</div>` : ''}
+              <table class="data-table" style="margin-bottom:10px">
+                <thead><tr><th>变更项目</th><th style="width:100px">金额</th><th>变更原因</th></tr></thead>
+                <tbody>
+                  ${co.items.map(it => `
+                    <tr>
+                      <td>${it.name}${it.isReplacement ? '<span class="tag tag-change" style="margin-left:6px">替代件</span>' : ''}</td>
+                      <td style="font-weight:600;color:#fa8c16">+ ${Util.fmtMoney(it.amount)}</td>
+                      <td>${it.reason}</td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+              ${co.photos && co.photos.length > 0 ? `<div style="margin-top:10px"><div style="color:#606266;font-size:12px;margin-bottom:6px">📷 变更佐证照片 (${co.photos.length}张)</div>${UI.photoWall(co.photos)}</div>` : ''}
+              <div style="color:#909399;font-size:12px;margin-top:8px">
+                提交时间：${Util.fmtTime(co.createdAt)}
+                ${co.approvedAt ? ` · 客户确认时间：${Util.fmtTime(co.approvedAt)}` : ''}
+              </div>
+            </div>
+          `).join('')}
+        </div>` : ''}
+
         ${order.addItems && order.addItems.length ? `
         <div class="card">
           <div class="card-title">➕ 追加 / 变更项</div>
           ${UI.addItemsTable(order.addItems, order.changeOrders)}
         </div>` : ''}
 
+        ${order.feeAdjustments && order.feeAdjustments.length > 0 ? `
+        <div class="card">
+          <div class="card-title">💱 费用调整记录</div>
+          ${UI.feeAdjustmentsPanel(order.feeAdjustments)}
+        </div>` : ''}
+
         <div class="card">
           <div class="card-title">💰 报价明细（总额 ${Util.fmtMoney(order.pricing.total)}）</div>
           ${UI.pricingBreakdown(order)}
           <div class="divider"></div>
+          ${order.materials && order.materials.some(m => m.feeType) ? `
+            <div class="card-title">🏷️ 费用类型标记</div>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px">
+              ${order.materials.filter(m => m.feeType).map(m => UI.feeTypeTag(m.feeType)).join('')}
+              ${order.labor && order.labor.filter(l => l.feeType).map(l => UI.feeTypeTag(l.feeType)).join('')}
+              ${order.addItems && order.addItems.filter(a => a.feeType).map(a => UI.feeTypeTag(a.feeType, a.amount)).join('')}
+            </div>
+            <div class="divider"></div>
+          ` : ''}
           ${UI.financeOverview(order)}
           <div class="divider"></div>
-          ${UI.warrantyBox(order) || '<div style="color:#909399">本项目暂未设置保修承诺</div>'}
+          ${UI.detailedWarrantyBox(order) || UI.warrantyBox(order) || '<div style="color:#909399">本项目暂未设置保修承诺</div>'}
         </div>
 
         ${(order.invoices && order.invoices.length) ? `
@@ -287,19 +366,22 @@
       const renderOne = () => {
         const c = pending[idx];
         if (!c) { UI.toast('所有变更单处理完毕', 'success'); m.close(); App.router.refresh(); return; }
+        const photosHtml = c.photos && c.photos.length > 0 ? UI.photoWall(c.photos) : '';
         m.setBody(`
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
             <b>变更单 ${c.id}（${idx + 1}/${pending.length}）</b>
             <span style="font-size:18px;font-weight:700;color:#fa8c16">+ ${Util.fmtMoney(c.totalAdd)}</span>
           </div>
+          ${c.diagnosis ? `<div style="background:#fffbe6;padding:8px 12px;border-radius:6px;font-size:13px;color:#ad4e00;margin-bottom:12px">📝 ${c.diagnosis}</div>` : ''}
           <div style="padding:12px;background:#fff7e6;border-radius:6px;margin-bottom:12px">
             <div style="color:#ad4e00;font-size:12px;margin-bottom:6px">提交时间：${Util.fmtTime(c.createdAt)}</div>
-            <table class="data-table">
+            <table class="data-table" style="margin-bottom:10px">
               <thead><tr><th>项目</th><th style="width:100px">金额</th><th>原因</th></tr></thead>
               <tbody>
-                ${c.items.map(it => `<tr><td>${it.name}</td><td>+${Util.fmtMoney(it.amount)}</td><td>${it.reason}</td></tr>`).join('')}
+                ${c.items.map(it => `<tr><td>${it.name}${it.isReplacement ? '<span class="tag tag-change" style="margin-left:6px">替代件</span>' : ''}</td><td>+${Util.fmtMoney(it.amount)}</td><td>${it.reason}</td></tr>`).join('')}
               </tbody>
             </table>
+            ${photosHtml ? `<div style="margin-top:10px"><div style="color:#606266;font-size:12px;margin-bottom:6px">📷 变更佐证照片 (${c.photos.length}张)</div>${photosHtml}</div>` : ''}
           </div>
           <div style="color:#606266;font-size:13px">
             变更批准后，以上金额将计入报价总额。请仔细核对是否与施工内容一致。
@@ -328,10 +410,242 @@
       };
       const m = UI.openModal({
         title: '📋 变更单审批 · ' + order.id,
-        body: '', footer: '', width: 720
+        body: '', footer: '', width: 800, className: 'modal-lg'
       });
       window.__caSkip = () => m.close();
       renderOne();
+    },
+
+    partialConfirmModal(orderId) {
+      runSafely(() => {
+        const order = Store.getOrder(orderId);
+        const phases = Store.getPhases(orderId);
+        if (!phases || phases.length === 0) {
+          UI.toast('该工单未设置分阶段', 'warning');
+          return;
+        }
+
+        const renderBody = () => {
+          const confirmTableHtml = UI.itemConfirmTable(phases, { editable: true });
+          const confirmedCount = (phases || []).reduce((s, p) => s + (p.items || []).filter(it => it.confirmed).length, 0);
+          const totalCount = (phases || []).reduce((s, p) => s + (p.items || []).length, 0);
+
+          return `
+            <div class="status-banner info">
+              💡 您可以只确认部分项目。<b>已确认的项目允许开工</b>，未确认的项目将被 🔒 锁定，不能施工。
+            </div>
+            <div style="margin-bottom:16px;padding:12px 16px;background:#f0f5ff;border-radius:8px">
+              <div style="display:flex;justify-content:space-between;align-items:center">
+                <div>
+                  已选择 <b style="color:#1890ff;font-size:16px">${confirmedCount}</b> / ${totalCount} 项
+                  ${confirmedCount < totalCount ? `<span style="color:#fa8c16;margin-left:12px">⚠️ ${totalCount - confirmedCount} 项未确认，将被锁定</span>` : ''}
+                </div>
+                <div style="color:#52c41a">
+                  已确认金额：<b>${Util.fmtMoney((phases || []).reduce((s, p) => s + (p.items || []).filter(it => it.confirmed).reduce((s2, it) => s2 + Number(it.amount || 0), 0), 0))}</b>
+                </div>
+              </div>
+            </div>
+            ${confirmTableHtml}
+          `;
+        };
+
+        const footer = `
+          <button class="btn btn-secondary" data-close>取消</button>
+          <button class="btn btn-success" id="pc-submit">☑️ 确认所选项目</button>
+        `;
+        const m = UI.openModal({ title: '☑️ 项目级部分确认 · ' + order.id, body: renderBody(), footer, width: 900, className: 'modal-lg' });
+
+        const bind = () => {
+          m.body.querySelectorAll('.select-all-btn').forEach(btn => {
+            btn.onclick = () => {
+              m.body.querySelectorAll('.item-confirm-check:not(:disabled)').forEach(cb => cb.checked = true);
+            };
+          });
+          m.body.querySelectorAll('.clear-all-btn').forEach(btn => {
+            btn.onclick = () => {
+              m.body.querySelectorAll('.item-confirm-check:not(:disabled)').forEach(cb => cb.checked = false);
+            };
+          });
+          m.body.querySelectorAll('[data-close]').forEach(b => b.onclick = () => m.close());
+        };
+        bind();
+
+        m.el.querySelector('#pc-submit').onclick = async () => {
+          const checkedIds = Array.from(m.body.querySelectorAll('.item-confirm-check:checked')).map(cb => cb.getAttribute('data-id'));
+          if (checkedIds.length === 0) {
+            UI.toast('请至少选择一项', 'warning');
+            return;
+          }
+          const allCount = m.body.querySelectorAll('.item-confirm-check').length;
+          const note = await UI.prompt('确认备注（可选）', {
+            label: `您确认了 ${checkedIds.length}/${allCount} 项，是否有需要说明的？`,
+            multiline: true,
+            rows: 2,
+            required: false,
+            placeholder: '如：先确认拆除阶段，隐蔽工程待查看后再确认...'
+          });
+          if (note === null) return;
+          runSafely(() => {
+            State.confirmPartialItems(orderId, checkedIds, note);
+            UI.toast(`已确认 ${checkedIds.length} 项，未确认项目已锁定`, 'success', 3000);
+            m.close();
+            App.router.refresh();
+          });
+        };
+      });
+    },
+
+    phaseAcceptModal(orderId) {
+      runSafely(() => {
+        const order = Store.getOrder(orderId);
+        const phases = Store.getPhases(orderId);
+        if (!phases || phases.length === 0) {
+          UI.toast('该工单未设置分阶段', 'warning');
+          return;
+        }
+
+        const renderBody = () => {
+          const phasesHtml = phases.map((p, idx) => {
+            const canAccept = p.status === 'done';
+            const items = p.items || [];
+            const confirmedItems = items.filter(it => it.confirmed && !it.accepted);
+            return `
+              <div class="phase-card ${p.status}">
+                <div class="phase-card-header">
+                  <div>
+                    <span class="phase-num">${idx + 1}</span>
+                    <b style="font-size:15px">${p.name}</b>
+                    <span class="tag ${Store.getPhaseStatusLabel(p.status).cls}" style="margin-left:8px">${Store.getPhaseStatusLabel(p.status).text}</span>
+                  </div>
+                  <div>
+                    ${canAccept ? `<button class="btn btn-success btn-sm accept-phase-btn" data-phase="${p.key}">✓ 验收此阶段</button>` : ''}
+                  </div>
+                </div>
+                <div style="color:#606266;font-size:13px;margin:8px 0">${p.desc || ''}</div>
+                ${items.length > 0 ? `
+                  <table class="data-table" style="font-size:13px;margin-top:10px">
+                    <thead><tr>
+                      <th style="width:30px"></th>
+                      <th>项目名称</th>
+                      <th style="width:100px;text-align:right">金额</th>
+                      <th style="width:80px">状态</th>
+                    </tr></thead>
+                    <tbody>
+                      ${items.map(it => `
+                        <tr class="${it.accepted ? 'accepted-row' : ''} ${it.confirmed ? '' : 'unconfirmed-row'}">
+                          <td>${it.accepted ? '✅' : it.confirmed ? '☑️' : '⬜'}</td>
+                          <td>${it.name}${it.isChange ? '<span class="tag tag-change" style="margin-left:6px">变更</span>' : ''}${it.reason ? `<div style="color:#909399;font-size:11px">📝 ${it.reason}</div>` : ''}</td>
+                          <td style="text-align:right">${Util.fmtMoney(it.amount)}</td>
+                          <td>${it.accepted ? '<span class="tag tag-success">已验收</span>' : it.confirmed ? '<span class="tag tag-pending">待验收</span>' : '<span class="tag tag-draft">未确认</span>'}</td>
+                        </tr>
+                      `).join('')}
+                    </tbody>
+                  </table>
+                ` : ''}
+                ${p.acceptedAt ? `<div style="color:#52c41a;font-size:12px;margin-top:8px">✅ 验收通过：${Util.fmtTime(p.acceptedAt)}</div>` : ''}
+                ${p.completedAt ? `<div style="color:#1890ff;font-size:12px;margin-top:4px">📌 提交验收：${Util.fmtTime(p.completedAt)}</div>` : ''}
+              </div>
+            `;
+          }).join('');
+
+          return `
+            ${UI.phaseProgress(phases)}
+            <div class="divider"></div>
+            <div class="section-title">📋 分阶段验收</div>
+            <div class="phase-cards">
+              ${phasesHtml}
+            </div>
+          `;
+        };
+
+        const footer = `
+          <button class="btn btn-secondary" data-close>关闭</button>
+        `;
+        const m = UI.openModal({ title: '📊 分阶段验收 · ' + order.id, body: renderBody(), footer, width: 1000, className: 'modal-xl' });
+
+        const bind = () => {
+          m.body.querySelectorAll('.accept-phase-btn').forEach(btn => {
+            btn.onclick = async () => {
+              const phaseKey = btn.getAttribute('data-phase');
+              const phase = phases.find(p => p.key === phaseKey);
+              const itemIds = (phase.items || []).filter(it => it.confirmed && !it.accepted).map(it => it.id);
+              if (itemIds.length === 0) {
+                UI.toast('该阶段没有待验收的项目', 'warning');
+                return;
+              }
+              const ok = await UI.confirm('阶段验收确认',
+                `<div>确认 <b>${phase.name}</b> 验收通过？</div>
+                 <div style="margin-top:8px;color:#52c41a">✅ 将验收通过 ${itemIds.length} 个项目</div>
+                 <div style="margin-top:8px;color:#909399;font-size:12px">您也可以在整体验收时一并验收所有阶段。</div>`,
+                '✓ 确认验收', '取消');
+              if (!ok) return;
+              runSafely(() => {
+                State.acceptPhase(orderId, phaseKey, itemIds, '客户分阶段验收通过');
+                UI.toast(`${phase.name} 验收通过`, 'success');
+                m.body.innerHTML = renderBody(); bind();
+              });
+            };
+          });
+          m.body.querySelectorAll('[data-close]').forEach(b => b.onclick = () => m.close());
+        };
+        bind();
+      });
+    },
+
+    viewReturnedNote(orderId) {
+      runSafely(() => {
+        const order = Store.getOrder(orderId);
+        const returnedEvent = (order.timeline || []).find(e => e.type === 'returned');
+        const note = returnedEvent ? returnedEvent.note : '暂无退回意见';
+        UI.alert('退回报价意见', `<div style="background:#fff1f0;padding:12px 16px;border-radius:6px;color:#a8071a;line-height:1.7">${note}</div>`);
+      });
+    },
+
+    waitForRequote(orderId) {
+      UI.toast('已通知师傅重新报价，请耐心等待', 'info');
+    },
+
+    async confirmQuote(orderId) {
+      const order = Store.getOrder(orderId);
+      const phases = Store.getPhases(orderId);
+      const unconfirmedCount = phases ? Store.getUnconfirmedItems(orderId).length : 0;
+
+      let confirmMsg = `<div>您即将确认以下报价，确认后将进入施工安排。</div>
+         <div style="margin:12px 0;padding:14px;background:#fafbfc;border-radius:6px">
+           <div style="font-weight:600;margin-bottom:6px">${order.title}</div>
+           <div><b>报价总额：<span style="font-size:18px;color:#ff4b2b">${Util.fmtMoney(order.pricing.total)}</span></b></div>
+           <div style="margin-top:4px;color:#909399">预估上限：${Util.fmtMoney(order.estimateUpper)} · 保修：${order.warranty.months ? order.warranty.months + ' 个月' : '无'}</div>
+         </div>`;
+
+      if (unconfirmedCount > 0) {
+        confirmMsg += `<div style="background:#fffbe6;padding:10px 14px;border-radius:6px;margin-bottom:10px;border:1px solid #ffe58f">
+          <span style="color:#ad4e00">⚠️ 有 ${unconfirmedCount} 个项目未单独确认，将随本次全部确认一并确认。</span>
+        </div>`;
+      }
+
+      confirmMsg += `<div style="color:#ad4e00">⚠️ 确认后，<b>师傅一旦开工报价即锁价</b>，后续任何增项都将走变更单。</div>`;
+
+      const ok = await UI.confirm('确认报价？', confirmMsg, '✅ 我已阅读并确认报价', '再想想');
+      if (!ok) return;
+      runSafely(() => {
+        State.clientConfirm(orderId);
+        UI.toast('报价已确认，等待师傅开工', 'success');
+        App.router.refresh();
+      });
+    },
+
+    async returnQuote(orderId) {
+      const reason = await UI.prompt('退回报价', {
+        label: '请填写退回原因（≥5 个字，师傅将据此修改后重报）：',
+        multiline: true, rows: 4, required: true,
+        placeholder: '如：材料缺少品牌规格、价格过高、工时计算不合理、漏报某项目...'
+      });
+      if (reason === null) return;
+      runSafely(() => {
+        State.clientReturn(orderId, reason);
+        UI.toast('报价已退回，请等待师傅重报', 'warning');
+        App.router.refresh();
+      });
     }
   };
 
